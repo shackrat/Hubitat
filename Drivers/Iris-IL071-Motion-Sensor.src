@@ -1,0 +1,367 @@
+/*
+ *  Copyright 2018 SmartThings, modifications by Steve White
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License"); you may not
+ *  use this file except in compliance with the License. You may obtain a copy
+ *  of the License at:
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *  WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *  License for the specific language governing permissions and limitations
+ *  under the License.
+ */
+import hubitat.zigbee.clusters.iaszone.ZoneStatus
+
+metadata
+{
+	definition(name: "Iris IL071 Motion Sensor", namespace: "shackrat", author: "Steve White")
+	{
+		capability "Motion Sensor"
+		capability "Configuration"
+		capability "Battery"
+		capability "Temperature Measurement"
+		capability "Relative Humidity Measurement"
+		capability "Refresh"
+		capability "Health Check"
+		capability "Sensor"
+
+		fingerprint inClusters: "0000,0001,0003,0020,0402,0405,0500,0B05,FC01,FC02", outClusters: "0019,0003", manufacturer: "iMagic by GreatStar", model: "1117-S", deviceJoinName: "Iris IL071 Motion Sensor"	
+	}
+
+	preferences
+	{
+		section
+		{
+			input "tempOffset", "number", title: "Temperature Offset", range: "*..*", description: "This feature allows you to correct any temperature variations by selecting an offset. Ex: If your sensor consistently reports a temp that's 5 degrees too warm, you'd enter '-5'. If 3 degrees too cold, enter '+3'.", displayDuringSetup: false, type: "paragraph", element: "paragraph"
+			input "humidityOffset", "number", title: "Humidity Offset", range: "*..*", description: "This feature allows you to correct any humidity variations by selecting an offset. Ex: If your sensor consistently reports a humidity that's 6% higher then a similiar calibrated sensor, you'd enter \"-6\"."
+			input "enableTrace", "bool", title: "Enable trace logging?", description: "Show high-level activities during the operation of the device?", defaultValue: false, required: false, multiple: false
+			input "enableDebug", "bool", title: "Enable debug logging?", description: "Show detailed responses to device commands?", defaultValue: false, required: false, multiple: false
+		}
+	}
+}
+
+
+private List<Map> collectAttributes(Map descMap)
+{
+	List<Map> descMaps = new ArrayList<Map>()
+
+	descMaps.add(descMap)
+
+	if (descMap.additionalAttrs)
+	{
+		descMaps.addAll(descMap.additionalAttrs)
+	}
+
+	return  descMaps
+}
+
+
+/*
+	parse
+    
+	Processes incoming zigbee messages from the Iris Motion Sensor.
+*/
+def parse(String description)
+{
+	logTrace "Msg: Description is $description"
+	Map map = zigbee.getEvent(description)
+
+	if (!map)
+	{
+		if (description?.startsWith('zone status'))
+		{
+			map = parseIasMessage(description)
+		}
+		else
+		{
+			Map descMap = zigbee.parseDescriptionAsMap(description)
+
+			if (descMap?.clusterId == "0001" && descMap.command == "07" && descMap.value)
+			{
+				logDebug "BATT METRICS - attr: ${descMap?.attrInt}, value: ${descMap?.value}, decValue: ${Integer.parseInt(descMap.value, 16)}, currPercent: ${device.currentState("battery")?.value}, device: ${device.getDataValue("manufacturer")} ${device.getDataValue("model")}"
+				List<Map> descMaps = collectAttributes(descMap)
+				def battMap = descMaps.find { it.attrInt == 0x0020 }
+
+				if (battMap)
+				{
+					map = getBatteryResult(Integer.parseInt(battMap.value, 16))
+				}
+			}
+			else if (descMap?.clusterId == "0500" && descMap.attrInt == 0x0002)
+			{
+				def zs = new ZoneStatus(zigbee.convertToInt(descMap.value, 16))
+				map = translateZoneStatus(zs)
+			}
+			
+			// Battery reporting configure() ACK
+			else if (descMap?.clusterId == "0001" && descMap.command == "07" && descMap.data[0] == "00")
+			{
+				if (descMap.data[0] == "00")
+				{
+					logDebug "== BATTERY REPORTING CONFIG RESPONSE: success =="
+				}
+				else
+				{
+					logError "!!! BATTERY REPORTING CONFIG FAILED: Error code: ${descMap.data[0]} !!!"
+				}
+			}
+
+			// Temperature reporting configure() ACK
+			else if (descMap?.clusterId == "0402" && descMap.command == "07" && descMap.data[0] == "00")
+			{
+				if (descMap.data[0] == "00")
+				{
+					logDebug "== TEMPERATURE REPORTING CONFIG RESPONSE: success =="
+				}
+				else
+				{
+					logError "!!! TEMPERATURE REPORTING CONFIG FAILED: Error code: ${descMap.data[0]} !!!"
+				}
+			}
+			
+			// Humidity reporting configure() ACK
+			else if (descMap?.clusterId == "0405" && descMap.command == "07" && descMap.data[0] == "00")
+			{
+				if (descMap.data[0] == "00")
+				{
+					logDebug "== HUMIDITY REPORTING CONFIG RESPONSE: success =="
+				}
+				else
+				{
+					logError "!!! HUMIDITY REPORTING CONFIG FAILED: Error code: ${descMap.data[0]} !!!"
+				}
+			}
+
+			else if (descMap?.clusterId == "0500" && descMap.attrInt == 0x0500 && descMap?.value)
+			{
+				map = translateZoneStatus(new ZoneStatus(zigbee.convertToInt(descMap?.value)))
+			}
+
+			// Humidity (Hubitat does not currently parse this cluster in zigbee.getEvent() )
+			else if (descMap?.clusterInt == 0x0405 && descMap?.value)
+			{
+				def value = (Integer.parseInt(descMap.value, 16) / 100) + (humidityOffset ? (int) humidityOffset : 0)
+				map.name = "humidity"
+				map.value = value
+				map.unit = "%"
+				map.descriptionText = "${device.displayName} relative humidity is ${value}%"
+			}
+		}
+	}
+	else if (map.name == "temperature")
+	{
+		if (tempOffset)
+		{
+			map.value = (int) map.value + (int) tempOffset
+		}
+		map.descriptionText = temperatureScale == 'C' ? "${device.displayName} temperature is ${map.value}°C" : "${device.displayName} temperature is ${map.value}°F"
+		map.translatable = true
+	}
+
+	logDebug "Parse returned $map"
+
+	def result = map ? createEvent(map) : [:]
+
+	if (description?.startsWith('enroll request'))
+	{
+		List cmds = zigbee.enrollResponse()
+		logDebug "enroll response: ${cmds}"
+		result = cmds?.collect { new hubitat.device.HubAction(it) }
+	}
+	return result
+}
+
+
+/*
+	parseIasMessage
+    
+	Returns ZoneStatus of a parsed IAS message.
+*/
+private Map parseIasMessage(String description) {
+	ZoneStatus zs = zigbee.parseZoneStatus(description)
+
+	translateZoneStatus(zs)
+}
+
+
+/*
+	translateZoneStatus
+    
+	Translates a ZoneStatus into an motion event object
+*/
+private Map translateZoneStatus(ZoneStatus zs) {
+	// Some sensor models that use this DTH use alarm1 and some use alarm2 to signify motion
+	return (zs.isAlarm1Set() || zs.isAlarm2Set()) ? getMotionResult('active') : getMotionResult('inactive')
+}
+
+
+/*
+	getBatteryResult
+    
+	Returns a battery level event.
+*/
+private Map getBatteryResult(rawValue) {
+	log.debug "Battery rawValue = ${rawValue}"
+	def linkText = getLinkText(device)
+
+	def result = [:]
+
+	def volts = rawValue / 10
+
+	if (!(rawValue == 0 || rawValue == 255)) {
+		result.name = 'battery'
+		result.translatable = true
+		result.unit = "V"
+		def minVolts =  2.4
+		def maxVolts =  2.7
+		// Get the current battery percentage as a multiplier 0 - 1
+		def curValVolts = Integer.parseInt(device.currentState("battery")?.value ?: "100") / 100.0
+		// Find the corresponding voltage from our range
+		curValVolts = curValVolts * (maxVolts - minVolts) + minVolts
+		// Round to the nearest 10th of a volt
+		curValVolts = Math.round(10 * curValVolts) / 10.0
+		// Only update the battery reading if we don't have a last reading,
+		// OR we have received the same reading twice in a row
+		// OR we don't currently have a battery reading
+		// OR the value we just received is at least 2 steps off from the last reported value
+		if (state?.lastVolts == null || state?.lastVolts == volts || device.currentState("battery")?.value == null || Math.abs(curValVolts - volts) > 0.1) {
+			def pct = (volts - minVolts) / (maxVolts - minVolts)
+			def roundedPct = Math.round(pct * 100)
+			if (roundedPct <= 0)
+				roundedPct = 1
+			result.value = Math.min(100, roundedPct)
+		} else {
+			// Don't update as we want to smooth the battery values, but do report the last battery state for record keeping purposes
+			result.value = device.currentState("battery").value
+		}
+		result.descriptionText = "${device.displayName} battery was ${result.value}%"
+		state.lastVolts = volts
+	}
+
+	return result
+}
+
+
+/*
+	getMotionResult
+    
+	Returns the current motion state as a message.
+
+*/
+private Map getMotionResult(value)
+{
+	String descriptionText = value == 'active' ? "${device.displayName} detected motion" : "${device.displayName} motion has stopped"
+	return [
+		name           : 'motion',
+		value          : value,
+		descriptionText: descriptionText,
+		translatable   : true
+	]
+}
+
+
+/*
+	refresh
+    
+	Refreshes the device by requesting battery, temperature, and humidity information.
+
+*/
+def refresh() {
+	log.debug "Refreshing Values"
+	def refreshCmds = []
+
+	refreshCmds +=
+		zigbee.readAttribute(zigbee.POWER_CONFIGURATION_CLUSTER, 0x0020) +
+		zigbee.readAttribute(zigbee.TEMPERATURE_MEASUREMENT_CLUSTER, 0x0000) +
+		zigbee.readAttribute(0x0405, 0x0000) +	// Humidity
+		zigbee.readAttribute(0x0500, 0x0002) +	// IAS Zone Status
+		zigbee.enrollResponse()
+
+	return refreshCmds
+}
+
+
+/*
+	configure
+    
+	Configures battery, temperature, and humidity reporting.
+*/
+def configure() {
+	logDebug "Configuring Reporting..."
+	
+	// temperature minReportTime 30 seconds, maxReportTime 5 min. Reporting interval if no activity
+	// battery minReport 30 seconds, maxReportTime 6 hrs by default
+	// humidity minReportTime 30 seconds, maxReportTime 60 min
+	def configCmds = []
+
+	configCmds +=
+		zigbee.batteryConfig() +
+		zigbee.temperatureConfig(30, 300) +
+		zigbee.configureReporting(0x0405, 0x0000, DataType.UINT16, 30, 3600, 100)  // Humidity 
+
+	return configCmds
+}
+
+
+/*
+	logError
+    
+	Displays dewarningbug output to IDE logs based on user preference.
+*/
+private logError(msgOut)
+{
+	log.error msgOut
+}
+
+
+/*
+	logWarn
+    
+	Displays dewarningbug output to IDE logs based on user preference.
+*/
+private logWarn(msgOut)
+{
+		log.warn msgOut
+}
+
+
+/*
+	logDebug
+    
+	Displays debug output to IDE logs based on user preference.
+*/
+private logDebug(msgOut)
+{
+	if (settings.enableDebug)
+	{
+		log.debug msgOut
+	}
+}
+
+
+/*
+	logTrace
+    
+	Displays trace output to IDE logs based on user preference.
+*/
+private logTrace(msgOut)
+{
+	if (settings.enableTrace)
+	{
+		log.trace msgOut
+	}
+}
+
+
+/*
+	logInfo
+    
+	Displays informational output to IDE logs.
+*/
+private logInfo(msgOut)
+{
+	log.info msgOut
+}
