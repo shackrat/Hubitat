@@ -28,6 +28,8 @@ metadata
 		capability "Health Check"
 		capability "Sensor"
 
+		attribute "batteryVoltage", "number"
+
 		fingerprint inClusters: "0000,0001,0003,0020,0402,0405,0500,0B05,FC01,FC02", outClusters: "0019,0003", manufacturer: "iMagic by GreatStar", model: "1117-S", deviceJoinName: "Iris IL071 Motion Sensor"	
 	}
 
@@ -160,7 +162,14 @@ def parse(String description)
 		map.descriptionText = temperatureScale == 'C' ? "${device.displayName} temperature is ${map.value}°C" : "${device.displayName} temperature is ${map.value}°F"
 		map.translatable = true
 	}
-
+	
+	// Battery voltage; add friendly event text.
+	else if (map.name == "batteryVoltage")
+	{
+		map.unit = "V"
+		map.descriptionText = "${device.displayName} battery voltage is ${map.value} volts"
+	}
+	
 	logDebug "Parse returned $map"
 
 	def result = map ? createEvent(map) : [:]
@@ -204,7 +213,7 @@ private Map translateZoneStatus(ZoneStatus zs) {
 	Returns a battery level event.
 */
 private Map getBatteryResult(rawValue) {
-	log.debug "Battery rawValue = ${rawValue}"
+
 	def linkText = getLinkText(device)
 
 	def result = [:]
@@ -214,7 +223,7 @@ private Map getBatteryResult(rawValue) {
 	if (!(rawValue == 0 || rawValue == 255)) {
 		result.name = 'battery'
 		result.translatable = true
-		result.unit = "V"
+		result.unit = "%"
 		def minVolts =  2.4
 		def maxVolts =  2.7
 		// Get the current battery percentage as a multiplier 0 - 1
@@ -307,6 +316,48 @@ def configure() {
 
 
 /*
+	installed
+    
+	Doesn't do much other than call configure().
+*/
+def installed()
+{
+	state.lastVolts = 0
+	
+	initialize()
+    configure()
+}
+
+
+/*
+	updated
+    
+	Doesn't do much other than call configure().
+*/
+def updated()
+{
+	initialize()
+    configure()
+}
+
+
+/*
+	initialize
+    
+	Doesn't do much other than call configure().
+*/
+def initialize()
+{
+	if (enableTrace || enableDebug)
+	{
+		logInfo "Verbose logging has been enabled for the next 30 minutes."
+		runIn(1800, logsOff)
+	}
+}
+
+
+
+/*
 	logError
     
 	Displays dewarningbug output to IDE logs based on user preference.
@@ -364,4 +415,17 @@ private logTrace(msgOut)
 private logInfo(msgOut)
 {
 	log.info msgOut
+}
+
+
+/*
+	logsOff
+    
+	Disables debug logging.
+*/
+def logsOff()
+{
+    logWarn "debug logging disabled..."
+    device.updateSetting("enableTrace", [value:"false",type:"bool"])
+	device.updateSetting("enableDebug", [value:"false",type:"bool"])
 }
