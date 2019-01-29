@@ -137,7 +137,7 @@ def parse(String description)
 		}
 	}
 	
-	//Handle interval-based power reporting
+	// Handle interval-based power reporting
 	else if (msg?.cluster == "0B04")
 	{
 		// Watts
@@ -152,7 +152,7 @@ def parse(String description)
 		else if (msg?.attrId == "0505")
 		{
 			def value = Integer.parseInt(msg.value, 16)
-			if ((device.data.manufacturer == "SmartThings" || device.data.manufacturer) && value > 10) value /= 10  // ST branded outlets read voltage in tenths
+			if ((device.data.manufacturer == "SmartThings" || device.data.manufacturer == "Samjin") && value > 10) value /= 10  // ST branded outlets read voltage in tenths
 			event = createEvent(name: "voltage", value: value, descriptionText: "${device.displayName} voltage is ${value} volts")
 			logTrace "${device.displayName} voltage is ${value} volts"
 		}
