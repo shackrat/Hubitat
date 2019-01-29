@@ -46,9 +46,9 @@ metadata
 	{
 		section()
 		{
-        	input "intervalMin", "number", title: "Minimum interval (seconds) between power reports:", defaultValue: 5, range: "1..600", required: false
-        	input "intervalMax", "number", title: "Maximum interval (seconds) between power reports:", defaultValue: 600, range: "1..600", required: false
-       		input "minDeltaV", "enum", title: "Amount of voltage change required to trigger a report:", options: [".5", "1", "5", "10", "15", "25", "50"], defaultValue: "1", required: false
+        		input "intervalMin", "number", title: "Minimum interval (seconds) between power reports:", defaultValue: 5, range: "1..600", required: false
+        		input "intervalMax", "number", title: "Maximum interval (seconds) between power reports:", defaultValue: 600, range: "1..600", required: false
+       			input "minDeltaV", "enum", title: "Amount of voltage change required to trigger a report:", options: [".5", "1", "5", "10", "15", "25", "50"], defaultValue: "1", required: false
 		}
 		section
 		{
