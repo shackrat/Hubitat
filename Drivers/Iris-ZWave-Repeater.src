@@ -1,5 +1,8 @@
 /**
- *  Copyright 2017 Steve White
+ *  Hubitat Import URL: https://raw.githubusercontent.com/shackrat/Hubitat/master/Drivers/Iris-ZWave-Repeater.src
+ *
+ *  Advanced (Iris) Z-Wave Repeater Driver for Hubitat
+ *  Copyright 2017-2019 Steve White
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -370,7 +373,7 @@ def testCommunication()
 
 
 	// Test 30 frames at nominal power
-	sendHubCommand(new hubitat.device.HubAction(zwave.powerlevelV1.powerlevelTestNodeSet(powerLevel: 0, testFrameCount: 30, testNodeid: 1).format()))
+	sendHubCommand(new hubitat.device.HubAction(zwave.powerlevelV1.powerlevelTestNodeSet(powerLevel: 0, testFrameCount: 30, testNodeid: 1).format(), hubitat.device.Protocol.ZWAVE))
 }
 
 
@@ -383,13 +386,13 @@ def testCommunication()
 */
 def getCommunicationTestResults()
 {
-	logTrace("Requesting test results from device ${state.testRefreshCount} of 3...")
-
-	sendHubCommand(new hubitat.device.HubAction(zwave.powerlevelV1.powerlevelTestNodeGet().format()))
+	sendHubCommand(new hubitat.device.HubAction(zwave.powerlevelV1.powerlevelTestNodeGet().format(), hubitat.device.Protocol.ZWAVE))
 	state.testRefreshCount = state.testRefreshCount + 1
+
+	logTrace("Requesting test results from device ${state.testRefreshCount} of 3...")
 	sendEvent(name: "lastTest", value: "Asking device for results (${state.testRefreshCount}/3)...", displayed: false)
     
-	if (state.testRefreshCount <= 3) runIn(10, getCommunicationTestResults)
+	if (state.testRefreshCount <= 3) runIn(6, getCommunicationTestResults)
 	else
 	{
 		unschedule(getCommunicationTestResults)
