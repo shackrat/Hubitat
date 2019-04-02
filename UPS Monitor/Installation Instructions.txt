@@ -1,0 +1,227 @@
+Configure a Pi with Raspberrian or other OS of choosing.
+
+
+Make sure SSH is enabled on the Raspberry Pi.
+
+	In Raspberrian menu, go to Preferences -> Raspberry Pi Configuration -> Interfaces tab and enable SSH.
+
+
+Make sure apt is up to date with the latest packages.
+
+	sudo apt-get update
+
+
+Optional but a good idea, make sure your Pi is up to date as well.
+
+	sudo apt-get upgrade
+
+
+Some pre-requisites, if you prefer to use vim as a text editor you will probably have to make the following change for terminal compatibility.
+
+	sudo vi /etc/vim/vimrc.tiny
+
+	Change the line: set compatible
+	To: set nocompatible
+
+	Then save and exit.
+
+
+Download apcupsd from Sourceforge.
+
+	wget https://downloads.sourceforge.net/project/apcupsd/apcupsd%20-%20Stable/3.14.14/apcupsd-3.14.14.tar.gz
+
+
+Extract the downloaded archive.
+
+	tar -zxvf apcupsd-3.14.14.tar.gz
+
+
+Navigate to the newly created directory.
+
+	cd apcupsd-3.14.14
+
+
+Configure the build environment.  Make sure to add the --enable-usb flag for compatibility with USB-enabled UPS's.
+
+	sudo ./configure --enable-usb
+
+
+Build apcupsd.
+
+	sudo make
+
+
+Install apcupsd.
+
+	sudo make install
+
+
+
+Install Apache2
+
+	sudo apt-get install apache2 -y
+
+
+Install PHP for Apache2 and some other php extensions.
+
+	sudo apt-get install php libapache2-mod-php php-curl -y
+
+
+Use a browser and test to see that Apache2 is running.  If everything is ok, you'll see the "Apache2 Debian Default Page".
+
+	http://x.x.x.x
+
+
+Navigate to the Apache2 web root directory.
+
+	cd /var/www/html
+
+
+Install the PHP service file
+
+	sudo vi apc.php
+	- Paste the contents of the apc.php file included.
+	- OR upload the included apc.php file to the directory.
+
+	Ensure that the IP address of your SmartThings hub is set correctly in the $st_hub variable in the // Configuration section.
+
+
+Test that the PHP service file is executing correctly.
+
+	Open a web browser and navigate to the url: http://<IP OF RASPBERRY PI>/apc.php?a=ping
+	If the Apache2 is installed correctly the word OK should appear in the browser.
+
+
+Configure APCUPSD
+
+	Modify the apcupsd configuration file.
+
+		sudo vi /etc/apcupsd/apcupsd.conf
+
+	Set or change the following values:
+
+		UPSNAME <unique name, no spaces>   i.e. UPSNAME livingroom
+
+		UPSCABLE usb	(if not using a USB-connected UPS, use the appropriate value)
+
+		UPSTYPE usb	(if not using a USB-connected UPS, use the appropriate value listed in the config)
+
+		DEVICE		(note, enter NOTHING after the command)
+
+	Save and close the file.
+
+
+Connect the UPS to the Raspberry Pi and test that apcupsd can communicate with it.
+
+	sudo apctest
+
+
+If all tests pass, start up the apcupsd service
+
+	sudo /etc/init.d/apcupsd start
+
+
+Test that the daemon is running.  After 30 seconds,
+
+	apcaccess status
+
+
+Configure APCUPSD for push notifications when events happen.
+
+	Copy the included apccontrol file to /etc/apcupsd/ or edit the file as follows:
+
+		sudo vi /etc/apcupsd/apccontrol
+
+	Look for the section:
+
+		powerout)
+		;;
+
+	Add the following statement so the block looks as follows:
+
+		powerout)
+			wget -q -O- "http://localhost/apc.php?a=notify&status=powerout"
+		;;
+
+
+	Look for the section:
+
+		onbattery)
+			echo "Power failure on UPS ${2}. Running on batteries." | ${WALL}
+		;;
+
+	Add the following statement so the block looks as follows:
+
+		onbattery)
+			echo "Power failure on UPS ${2}. Running on batteries." | ${WALL}
+			wget -q -O- "http://localhost/apc.php?a=notify&status=onbattery"
+		;;
+
+
+	Look for the section:
+
+		offbattery)
+			echo "Power has returned on UPS ${2}..." | ${WALL}
+		;;
+
+	Add the following statement so the block looks as follows:
+
+		offbattery)
+			echo "Power has returned on UPS ${2}..." | ${WALL}
+			wget -q -O- "http://localhost/apc.php?a=notify&status=offbattery"
+		;;
+
+
+Add a crontab entry to automatically push UPS data to SmartThings
+
+		sudo crontab -e
+
+	Add the following line to push UPS data to SmartThings every 60 seconds.
+	(Power events are pushed to SmartThings as they occur)
+
+		* * * * * /usr/bin/wget -q -O- "http://localhost/apc.php"
+
+	Check to see that the crontab entry was saved.
+
+		sudo crontab -l
+
+
+Depending on your Raspberry Pi OS, you might have to modify the apcupsd service file to get it to start at system boot.  If apcupsd fails automatically at boot, make the following modification:
+
+	Open the service script.
+
+		sudo vi /etc/init.d/apcupsd
+
+	Right at the top of the file below "#! /bin/sh" add the following
+
+### BEGIN INIT INFO
+# Provides:          apcupsd
+# Required-Start:
+# Required-Stop:
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: apcupsd
+# Description:       apcupsd
+### END INIT INFO
+
+	Save the file
+
+	Reset apcupsd settings in update-rc.d to defaults.
+
+		sudo update-rc.d apcupsd defaults
+
+	Enable the service.
+
+		sudo update-rc.d apcupsd enable
+
+	Reboot
+
+		sudo shutdown -r now
+
+
+
+
+
+
+
+
