@@ -2,7 +2,7 @@
  *  Hubitat Import URL: https://raw.githubusercontent.com/shackrat/Hubitat/master/Drivers/Iris-ZWave-Repeater.src
  *
  *  Advanced (Iris) Z-Wave Repeater Driver for Hubitat
- *  Copyright 2017-2019 Steve White
+ *  Copyright 2017-2020 Steve White
  *
  *  Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
  *  in compliance with the License. You may obtain a copy of the License at:
@@ -14,6 +14,8 @@
  *  for the specific language governing permissions and limitations under the License.
  *
  */
+def getDriverVersion() {[platform: "Hubitat", major: 2, minor: 0, build: 0]}
+
 metadata
 {
 	definition (name: "Iris Z-Wave Repeater", namespace: "shackrat", author: "Steve White")
@@ -25,13 +27,16 @@ metadata
 
 		command "testCommunication"
 		command "interrogateDevice"
-		
+
 		attribute "status", "string"
 		attribute "lastRefresh", "string"
 		attribute "deviceMSR", "string"
-		attribute "lastRefresh","string"
-		attribute "lastMsgRcvd","string"
-		
+		attribute "deviceVersion", "string"
+		attribute "deviceZWaveLibType", "string"
+		attribute "deviceZWaveVersion", "string"
+		attribute "lastRefresh", "string"
+		attribute "lastMsgRcvd", "string"
+
 		fingerprint mfr: "0246", prod: "0001", model: "0001", cc: "85,59,5A,72,73,86,5E",  deviceJoinName: "Iris Z-Wave Repeater"
 	}
 
@@ -55,7 +60,7 @@ metadata
 
 /*
 	installed
-    
+
 	Doesn't do much other than call configure().
 */
 def installed()
@@ -66,7 +71,7 @@ def installed()
 
 /*
 	updated
-    
+
 	Doesn't do much other than call configure().
 */
 def updated()
@@ -77,7 +82,7 @@ def updated()
 
 /*
 	configure
-    
+
 	Configures the Z-Wave repeater associations and establishes periodic device check.
 */
 def configure()
@@ -105,7 +110,7 @@ def configure()
 
 /*
 	parse
-    
+
 	Processes messages from the Z-Wave side of the Iris Smart Plug.
 */
 def parse(String description)
@@ -143,7 +148,7 @@ def zwaveEvent(hubitat.zwave.commands.powerlevelv1.PowerlevelReport cmd)
 	sendEvent(name: "powerLevel", value: pwrLevel, displayed: false)
 	sendEvent(name: "lastMsgRcvd", value: dateTime.format("yyyy-MM-dd HH:mm:ss", location.timeZone) + ": POWER LEVEL REPORT V1", displayed: false)
 	updateStatus()
- 
+
 	if (state.interrogationPhase == 1)
 	{
 		state.interrogationPhase = 2
@@ -157,14 +162,19 @@ def zwaveEvent(hubitat.zwave.commands.powerlevelv1.PowerlevelReport cmd)
 */
 def zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd)
 {
-	def fwVersion = "${cmd.applicationVersion}.${cmd.applicationSubVersion}"
-	logDebug("VERSION REPORT V1: ${device.displayName} is running firmware version: ${fwVersion}, Z-Wave version: ${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}")
+	def fwVersion = "${cmd.firmware0Version}.${cmd.firmware0SubVersion}"
+	def zwVersion = "${cmd.zWaveProtocolVersion}.${cmd.zWaveProtocolSubVersion}"
+
+	logDebug("VERSION REPORT V1: ${device.displayName} is running firmware version: ${fwVersion}, Z-Wave version: ${zwVersion}, Library type: ${cmd.zWaveLibraryType}")
+
+	sendEvent(name: "deviceVersion", value: fwVersion, displayed: false)
+	sendEvent(name: "deviceZWaveVersion", value: zwVersion, displayed: false)
+	sendEvent(name: "deviceZWaveLibType", value: cmd.zWaveLibraryType, displayed: false)
 
 	def dateTime = new Date()
-	sendEvent(name: "deviceVersion", value: fwVersion, displayed: false)
 	sendEvent(name: "lastMsgRcvd", value: dateTime.format("yyyy-MM-dd HH:mm:ss", location.timeZone) + ": VERSION REPORT V1", displayed: false)
 	updateStatus()
-    
+
 	if (state.interrogationPhase == 2)
 	{
 		state.interrogationPhase = 3
@@ -175,7 +185,7 @@ def zwaveEvent(hubitat.zwave.commands.versionv1.VersionReport cmd)
 
 /*
 	FIRMWARE REPORT RESPONSE
-    
+
 	Note: Not currently used
 */
 def zwaveEvent(hubitat.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd)
@@ -188,7 +198,7 @@ def zwaveEvent(hubitat.zwave.commands.firmwareupdatemdv2.FirmwareMdReport cmd)
 	logDebug("FIRMWARE METADATA REPORT V1: ${device.displayName} is running firmware ID: ${firmwareIdDisp} with checksum: ${checksumDisp}")
 	sendEvent(name: "lastMsgRcvd", value: dateTime.format("yyyy-MM-dd HH:mm:ss", location.timeZone) + ": FIRMWARE METADATA REPORT V1", displayed: false)
 	updateStatus()
-    
+
 	if (state.interrogationPhase == 3)
 	{
 		state.interrogationPhase = 4
@@ -208,7 +218,7 @@ def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv2.ManufacturerSpecifi
 	def manufacturerIdDisp = String.format("%04X",cmd.manufacturerId)
 	def productIdDisp = String.format("%04X",cmd.productId)
 	def productTypeIdDisp = String.format("%04X",cmd.productTypeId)
-    
+
 	def msr = String.format("%04X-%04X-%04X", cmd.manufacturerId, cmd.productTypeId, cmd.productId)
 	updateDataValue("MSR", msr)
 	updateDataValue("manufacturer", cmd.manufacturerName)
@@ -216,7 +226,7 @@ def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv2.ManufacturerSpecifi
 	def dateTime = new Date()
 	logDebug("MANUFACTURER SPECIFIC V2: Manufacturer ID: ${manufacturerIdDisp}, Manufacturer Name: ${cmd.manufacturerName}, Product Type ID: ${productTypeIdDisp}, Product ID: ${productIdDisp}")
 	sendEvent(name: "lastMsgRcvd", value: dateTime.format("yyyy-MM-dd HH:mm:ss", location.timeZone) + ": MANUFACTURER SPECIFIC V2", displayed: false)
-    
+
 	sendEvent(name: "deviceMSR", value: msr, displayed: false)
 	updateStatus()
 
@@ -239,12 +249,12 @@ def zwaveEvent(hubitat.zwave.commands.manufacturerspecificv2.ManufacturerSpecifi
 
 /*
 	ASSOCIATION GROUP NAME RESPONSE
-    
+
 	Note: Not currently used
 */
 def zwaveEvent(hubitat.zwave.commands.associationgrpinfov1.AssociationGroupNameReport cmd)
 {
-	logTrace "Received: ${cmd}" 
+	logTrace "Received: ${cmd}"
 	state.assocGrpName = cmd.name ? new String(cmd.name as byte[]) : ""
 
 	def dateTime = new Date()
@@ -262,7 +272,7 @@ def zwaveEvent(hubitat.zwave.commands.associationgrpinfov1.AssociationGroupNameR
 
 /*
 	ASSOCIATION GROUP INFO RESPONSE
-    
+
 	Note: Not currently used
 */
 def zwaveEvent(hubitat.zwave.commands.associationv2.AssociationReport cmd)
@@ -335,7 +345,7 @@ def zwaveEvent(hubitat.zwave.commands.powerlevelv1.PowerlevelTestNodeReport cmd)
 
 /*
 	updateStatus
-    
+
 	Sets the device state to online, but only if previously offline.
 */
 def updateStatus()
@@ -357,8 +367,8 @@ def updateStatus()
 
 /*
 	testCommunication
-    
-	Executes a Z-Wave powerlevel test with 10 transmission frames. 
+
+	Executes a Z-Wave powerlevel test with 10 transmission frames.
 
 	Note: Useful for testing Z-Wave signal reliability
 */
@@ -366,7 +376,7 @@ def testCommunication()
 {
 	runIn(10, getCommunicationTestResults)
 	state.testRefreshCount = 0
-    
+
 	sendEvent(name: "lastMsgRcvd", value: "", displayed: false)
 	logTrace("Sending 30 test frames to device...")
 	sendEvent(name: "lastTest", value: "Sending 30 test frames to device...", displayed: false)
@@ -379,8 +389,8 @@ def testCommunication()
 
 /*
 	getCommunicationTestResults
-    
-	Requests results from device of test initiated by testCommunication() 
+
+	Requests results from device of test initiated by testCommunication()
 
 	Note: Attempts to retreive results at 10 second intervals, up to 3 times before timing out.
 */
@@ -391,7 +401,7 @@ def getCommunicationTestResults()
 
 	logTrace("Requesting test results from device ${state.testRefreshCount} of 3...")
 	sendEvent(name: "lastTest", value: "Asking device for results (${state.testRefreshCount}/3)...", displayed: false)
-    
+
 	if (state.testRefreshCount <= 3) runIn(6, getCommunicationTestResults)
 	else
 	{
@@ -403,7 +413,7 @@ def getCommunicationTestResults()
 
 /*
 	interrogateDevice
-    
+
 	Schedules request for power level, device version, and other details from device.
 
 	Note: Iris SmartPlugs can be slow to respond to Z-Wave commands; it's not unusual for one not be handled by the device.
@@ -441,7 +451,7 @@ def interrogateDevice()
 
 /*
 	doDeviceInterrogation
-    
+
 	Manages requests power level, device version, and other details from device.
 
 	Note: Since delayBetween is currently broken, we'll use runIn and space the commands out by a few seconds.
@@ -488,17 +498,17 @@ def doDeviceInterrogation()
 			state.interrogationPhase = 0
 			break;
 	}
-    
+
 	if (state.interrogationPhase > 0 ) runIn(5, doDeviceInterrogation)
 	logTrace("Device Interrogation: Phase ${state.interrogationPhase} of 6; Attempt ${state.interrogationRetries} of 3...")
-	
+
 	result
 }
 
 
 /*
 	refresh
-    
+
 	Refreshes the device by requesting manufacturer-specific information.
 
 	Note: This is called from the refresh capbility
@@ -514,7 +524,7 @@ def refresh()
 
 	state.manualRefresh = 1
 	logTrace("Checking to see if device is online...")
-	sendEvent(name: "lastTest", value: "Attempting to contact device...", displayed: false)    
+	sendEvent(name: "lastTest", value: "Attempting to contact device...", displayed: false)
 
 	runIn(15, refresh)
 	refreshDevice()
@@ -523,7 +533,7 @@ def refresh()
 
 /*
 	refreshDevice
-    
+
 	Refreshes the device by requesting manufacturer-specific information.
 
 	Note: Three missed communication attempts will cause the device to be declared offline.
@@ -564,7 +574,7 @@ def refreshDevice()
 
 /*
 	poll
-    
+
 	Sets the device state to online, but only if previously offline.
 
 	Note: This has *NEVER* been called by the hub in testing, but is included for use with 3rd party SmartApps
@@ -592,7 +602,7 @@ def ping()
 
 /*
 	zwaveEvent
-    
+
 	Helper function, nothing to see here.
 */
 def zwaveEvent(hubitat.zwave.Command cmd)
@@ -603,7 +613,7 @@ def zwaveEvent(hubitat.zwave.Command cmd)
 
 /*
 	sendCommand
-    
+
 	Helper function, nothing to see here.
 */
 private sendCommand(hubitat.zwave.Command cmd)
@@ -619,7 +629,7 @@ private sendCommand(hubitat.zwave.Command cmd)
 
 /*
 	logDebug
-    
+
 	Displays debug output to IDE logs based on user preference.
 */
 private logDebug(msgOut)
@@ -633,7 +643,7 @@ private logDebug(msgOut)
 
 /*
 	logTrace
-    
+
 	Displays trace output to IDE logs based on user preference.
 */
 private logTrace(msgOut)
@@ -647,7 +657,7 @@ private logTrace(msgOut)
 
 /*
 	logInfo
-    
+
 	Displays informational output to IDE logs.
 */
 private logInfo(msgOut)
