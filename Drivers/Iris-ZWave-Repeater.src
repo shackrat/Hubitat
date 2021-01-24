@@ -18,7 +18,7 @@ def getDriverVersion() {[platform: "Hubitat", major: 2, minor: 0, build: 0]}
 
 metadata
 {
-	definition (name: "Iris Z-Wave Repeater", namespace: "shackrat", author: "Steve White")
+	definition (name: "Iris Z-Wave Repeater", namespace: "shackrat", author: "Steve White", importUrl: "https://raw.githubusercontent.com/shackrat/Hubitat/master/Drivers/Iris-ZWave-Repeater.src")
 	{
 		capability "Polling"
 		capability "Refresh"
