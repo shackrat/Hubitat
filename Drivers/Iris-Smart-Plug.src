@@ -16,7 +16,7 @@
 metadata 
 {
 	// Automatically generated. Make future change here.
-	definition(name: "Iris Smart Plug", namespace: "shackrat", author: "Steve White")
+	definition(name: "Iris Smart Plug", namespace: "shackrat", author: "Steve White", importUrl: "https://raw.githubusercontent.com/shackrat/Hubitat/master/Drivers/Iris-Smart-Plug.src")
 	{
 		capability "Actuator"
 		capability "Switch"
